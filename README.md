@@ -1,7 +1,9 @@
 check-nedi
 ==========
 
-Nagios check plugins to monitor the content of a NeDi backend.
+Nagios check plugin monitoring NeDi instances. The following modules
+are provided:
+
 
 check_nedi_macwatch
 -------------------
