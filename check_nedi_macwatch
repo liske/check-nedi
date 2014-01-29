@@ -1,0 +1,54 @@
+#!/usr/bin/perl
+
+# nedi-macwatch - nagios plugin using NeDi's node table to monitor MAC addresses
+#
+# Authors:
+#   Thomas Liske <thomas@fiasko-nw.net>
+#
+# Copyright Holder:
+#   2014 (C) Thomas Liske [http://fiasko-nw.net/~thomas/]
+#
+# License:
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this package; if not, write to the Free Software
+#   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+#
+
+use strict;
+use warnings;
+no warnings qw(once);
+
+use Getopt::Std;
+use Data::Dumper;
+
+use vars qw(%opt $p $now);
+
+getopts('dvU:',\%opt) || &HELP_MESSAGE;
+
+$now = time;
+
+$p = $0;
+$p =~ s/(.*)\/(.*)/$1/;
+$p = "." if($0 eq $p);
+
+$misc::dbname = $misc::dbhost = $misc::dbuser = $misc::dbpass = '';
+
+require "$p/inc/libmisc.pm";										# Use the miscellaneous nedi library
+require "$p/inc/libdb.pm";										# Use the DB function library
+
+&misc::ReadConf();
+
+sub HELP_MESSAGE{
+	print "\n";
+	exit;
+}
