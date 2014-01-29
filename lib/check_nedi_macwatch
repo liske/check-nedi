@@ -28,12 +28,14 @@ use strict;
 use warnings;
 no warnings qw(once);
 
+use lib "/usr/lib/nagios/plugins";
+use Nagios::Plugin qw(%ERRORS);
+
 use Getopt::Std;
-use Data::Dumper;
 
 use vars qw(%opt $p $now);
 
-getopts('dvU:',\%opt) || &HELP_MESSAGE;
+getopts('dvU:I:',\%opt) || &HELP_MESSAGE;
 
 $now = time;
 
@@ -49,6 +51,6 @@ require "$p/inc/libdb.pm";										# Use the DB function library
 &misc::ReadConf();
 
 sub HELP_MESSAGE{
-	print "\n";
-	exit;
+	print "Bad arguments!\n";
+	exit $ERRORS{'UNKNOWN'};
 }
