@@ -61,7 +61,8 @@ require "$p/inc/libdb.pm";										# Use the DB function library
 &db::Connect($misc::dbname,$misc::dbhost,$misc::dbuser,$misc::dbpass,1);
 
 $db::dbh->do('CREATE TABLE IF NOT EXISTS cn_mw_nodes (mac CHAR(16) NOT NULL, vlanid INT NOT NULL, comment TEXT, ack BOOL DEFAULT false, PRIMARY KEY(mac, vlanid))');
-&db::ReadNod("vlanid=$opt{I}");
+my $lseen = scalar time - 86400;
+&db::ReadNod("vlanid=$opt{I} AND lastseen > $lseen");
 
 my @badmacs;
 foreach my $mac (keys %nod) {
