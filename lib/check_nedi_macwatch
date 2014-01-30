@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+# nagios: -epn
+
 # nedi-macwatch - nagios plugin using NeDi's node table to monitor MAC addresses
 #
 # Authors:
@@ -32,16 +34,22 @@ use lib "/usr/lib/nagios/plugins";
 use Nagios::Plugin qw(%ERRORS);
 
 use Getopt::Std;
+use Data::Dumper;
 
-use vars qw(%opt $p $now);
+use vars qw(%opt $p $now %nod);
 
-getopts('dvU:I:',\%opt) || &HELP_MESSAGE;
+getopts('dvp:U:I:',\%opt) || &HELP_MESSAGE;
 
 $now = time;
 
-$p = $0;
-$p =~ s/(.*)\/(.*)/$1/;
-$p = "." if($0 eq $p);
+unless(exists($opt{p})) {
+    $p = $0;
+    $p =~ s/(.*)\/(.*)/$1/;
+    $p = "." if($0 eq $p);
+}
+else {
+    $p = $opt{p};
+}
 
 $misc::dbname = $misc::dbhost = $misc::dbuser = $misc::dbpass = '';
 
@@ -49,6 +57,42 @@ require "$p/inc/libmisc.pm";										# Use the miscellaneous nedi library
 require "$p/inc/libdb.pm";										# Use the DB function library
 
 &misc::ReadConf();
+
+&db::Connect($misc::dbname,$misc::dbhost,$misc::dbuser,$misc::dbpass,1);
+
+$db::dbh->do('CREATE TABLE IF NOT EXISTS cn_mw_nodes (mac CHAR(16) NOT NULL, vlanid INT NOT NULL, comment TEXT, ack BOOL DEFAULT false, PRIMARY KEY(mac, vlanid))');
+&db::ReadNod("vlanid=$opt{I}");
+
+my @badmacs;
+foreach my $mac (keys %nod) {
+    #B<Options> table, [hashkey], columns, match statement, join, using column(s)
+    my $ack = &db::Select('cn_mw_nodes', 'mac', 'mac,vlanid,ack', "mac='$mac' AND vlanid=$nod{$mac}->{vl}");
+
+    my $bad;
+    unless($ack) {
+	&db::Insert('cn_mw_nodes', 'mac,vlanid', "'$mac',$opt{I}");
+	$bad++;
+    }
+    elsif(!$ack->{$mac}->{ack}) {
+	$bad++;
+    }
+
+    push(@badmacs, $mac) if($bad);
+}
+
+my $state = ($#badmacs > -1 ? qq(CRITICAL) : qq(OK));
+my $msg = ($#badmacs > -1 ? ($#badmacs + 1).' unknown MAC addresses' : (scalar keys %nod).' valid MAC addresses');
+print "VID$opt{I} $state - $msg";
+printf " | 'MACs found'=%d;;;0 'MACs monitored'=%d;1;;0 'MACs unknown'=%d;;1;0", scalar keys %nod, 0, ($#badmacs + 1);
+
+foreach my $mac (sort @badmacs) {
+    my $pmac = $mac;
+    1 while($pmac =~ s/([\da-f][\da-f])([\da-f][\da-f])/$1:$2/gi);
+    printf("\n%s at %s%%%s", ($nod{$mac}->{na} ne '-' ? $nod{$mac}->{na}."[$pmac]" : $pmac), $nod{$mac}->{dv}, $nod{$mac}->{if});
+}
+print "\n";
+
+exit $ERRORS{$state};
 
 sub HELP_MESSAGE{
 	print "Bad arguments!\n";
