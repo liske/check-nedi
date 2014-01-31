@@ -70,6 +70,7 @@ my @unkmacs;
 my @monmacs;
 foreach my $mac (keys %nod) {
     #B<Options> table, [hashkey], columns, match statement, join, using column(s)
+    my $iftype = &db::Select('interfaces', '', 'iftype', "device='$nod{$mac}->{dv}' AND ifname='$nod{$mac}->{if}' LIMIT 1");
     my $ack = &db::Select('cn_mw_nodes', 'mac', 'mac,vlanid,ack', "mac='$mac' AND vlanid=$nod{$mac}->{vl}");
 
     my $status = 0;
@@ -77,6 +78,12 @@ foreach my $mac (keys %nod) {
 	$status = 1;
     }
     unless(scalar keys %$ack) {
+	# ignore ieee80211(71) ports
+	if($iftype eq '71') {
+	    delete($nod{$mac});
+	    next;
+	}
+
 	&db::Insert('cn_mw_nodes', 'mac,vlanid', "'$mac',$opt{I}");
 	$status = 2;
     }
@@ -98,10 +105,23 @@ my $msg = (scalar keys %nod == 0 ? 'no' : join(', ', @msg)).' MAC addresses';
 print "VID$opt{I} $state - $msg";
 printf " | 'MACs found'=%d;;;0 'MACs monitored'=%d;1;;0 'MACs unknown'=%d;;1;0", scalar keys %nod, 0, ($#unkmacs + 1);
 
+sub fnode($$) {
+    my $nod = shift;
+    my $pmac = shift;
+
+    return (($nod->{na} && $nod->{na} ne '-') ? $nod->{na}."[$pmac]" : $pmac);
+}
+
+foreach my $mac (sort @monmacs) {
+    my $pmac = $mac;
+    1 while($pmac =~ s/([\da-f][\da-f])([\da-f][\da-f])/$1:$2/gi);
+    printf("\nmon: %s at %s%%%s", fnode($nod{$mac}, $pmac), $nod{$mac}->{dv}, $nod{$mac}->{if});
+}
+
 foreach my $mac (sort @unkmacs) {
     my $pmac = $mac;
     1 while($pmac =~ s/([\da-f][\da-f])([\da-f][\da-f])/$1:$2/gi);
-    printf("\n%s at %s%%%s", ($nod{$mac}->{na} ne '-' ? $nod{$mac}->{na}."[$pmac]" : $pmac), $nod{$mac}->{dv}, $nod{$mac}->{if});
+    printf("\nunk: %s at %s%%%s", fnode($nod{$mac}, $pmac), $nod{$mac}->{dv}, $nod{$mac}->{if});
 }
 print "\n";
 
