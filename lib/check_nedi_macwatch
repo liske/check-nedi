@@ -61,32 +61,44 @@ require "$p/inc/libdb.pm";										# Use the DB function library
 &db::Connect($misc::dbname,$misc::dbhost,$misc::dbuser,$misc::dbpass,1);
 
 $db::dbh->do('CREATE TABLE IF NOT EXISTS cn_mw_nodes (mac CHAR(16) NOT NULL, vlanid INT NOT NULL, comment TEXT, ack BOOL DEFAULT false, PRIMARY KEY(mac, vlanid))');
+$db::dbh->do('CREATE TABLE IF NOT EXISTS cn_mw_monitors (mac CHAR(16) NOT NULL, comment TEXT, PRIMARY KEY(mac))');
 my $lseen = scalar time - 86400;
-&db::ReadNod("vlanid=$opt{I} AND lastseen > $lseen");
+&db::ReadNod("vlanid=$opt{I} AND (lastseen > $lseen OR EXISTS (SELECT 1 FROM cn_mw_nodes WHERE cn_mw_nodes.vlanid = nodes.vlanid AND cn_mw_nodes.mac=nodes.mac))");
+my $monitors = &db::Select('cn_mw_monitors', 'mac', 'mac,comment');
 
-my @badmacs;
+my @unkmacs;
+my @monmacs;
 foreach my $mac (keys %nod) {
     #B<Options> table, [hashkey], columns, match statement, join, using column(s)
     my $ack = &db::Select('cn_mw_nodes', 'mac', 'mac,vlanid,ack', "mac='$mac' AND vlanid=$nod{$mac}->{vl}");
 
-    my $bad;
-    unless($ack) {
+    my $status = 0;
+    if(exists($monitors->{$mac})) {
+	$status = 1;
+    }
+    unless(scalar keys %$ack) {
 	&db::Insert('cn_mw_nodes', 'mac,vlanid', "'$mac',$opt{I}");
-	$bad++;
+	$status = 2;
     }
     elsif(!$ack->{$mac}->{ack}) {
-	$bad++;
+	$status = 2;
     }
 
-    push(@badmacs, $mac) if($bad);
+    push(@monmacs, $mac) if($status == 1);
+    push(@unkmacs, $mac) if($status == 2);
 }
 
-my $state = ($#badmacs > -1 ? qq(CRITICAL) : qq(OK));
-my $msg = ($#badmacs > -1 ? ($#badmacs + 1).' unknown MAC addresses' : (scalar keys %nod).' valid MAC addresses');
-print "VID$opt{I} $state - $msg";
-printf " | 'MACs found'=%d;;;0 'MACs monitored'=%d;1;;0 'MACs unknown'=%d;;1;0", scalar keys %nod, 0, ($#badmacs + 1);
+my $state = ($#unkmacs > -1 ? qq(CRITICAL) : ($#monmacs > -1 ? qq(WARNING) : qq(OK)));
+my @msg;
+push(@msg, ($#unkmacs + 1).' unknown') if($#unkmacs > -1);
+push(@msg, ($#monmacs + 1).' monitored') if($#monmacs > -1);
+push(@msg, ((scalar keys %nod) - $#unkmacs - $#monmacs - 2).' known');
 
-foreach my $mac (sort @badmacs) {
+my $msg = (scalar keys %nod == 0 ? 'no' : join(', ', @msg)).' MAC addresses';
+print "VID$opt{I} $state - $msg";
+printf " | 'MACs found'=%d;;;0 'MACs monitored'=%d;1;;0 'MACs unknown'=%d;;1;0", scalar keys %nod, 0, ($#unkmacs + 1);
+
+foreach my $mac (sort @unkmacs) {
     my $pmac = $mac;
     1 while($pmac =~ s/([\da-f][\da-f])([\da-f][\da-f])/$1:$2/gi);
     printf("\n%s at %s%%%s", ($nod{$mac}->{na} ne '-' ? $nod{$mac}->{na}."[$pmac]" : $pmac), $nod{$mac}->{dv}, $nod{$mac}->{if});
